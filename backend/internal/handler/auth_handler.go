@@ -44,7 +44,11 @@ func ok(c *gin.Context, status int, data any, meta any) {
 func fail(c *gin.Context, err error) {
 	var appErr *service.AppError
 	if errors.As(err, &appErr) {
-		c.JSON(appErr.Status, gin.H{"error": gin.H{"code": appErr.Code, "message": appErr.Message, "request_id": c.GetString("request_id")}})
+		payload := gin.H{"code": appErr.Code, "message": appErr.Message, "request_id": c.GetString("request_id")}
+		if appErr.Details != nil {
+			payload["details"] = appErr.Details
+		}
+		c.JSON(appErr.Status, gin.H{"error": payload})
 		return
 	}
 	c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": service.CodeInternal, "message": "unexpected server error", "request_id": c.GetString("request_id")}})

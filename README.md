@@ -28,7 +28,7 @@ docker compose down -v --remove-orphans
 
 ## 功能
 
-- 线路档案：校验线路长度和折射率，查看历史轨迹，由 reviewer/admin 设置基线。
+- 线路档案：校验线路长度和折射率，查看历史轨迹，由 reviewer/admin 设置基线。复核基线更换前在同一事务内检查未关闭案例：仍有案例引用当前基线时整次拒绝（`BASELINE_CASES_OPEN`，响应 `details.blockers` 列出阻塞案例），拒绝原因写审计；请求携带 `version` 乐观锁，轨迹不属于本线路、与当前基线相同或基线并发变化时不改写。已关闭历史案例继续保留各自原基线。
 - 轨迹分析：导入离线采样，记录去噪窗口、检测阈值和合并窗口，缩放真实 API 曲线。
 - 事件复核：按线路、类型和复核状态筛选，保留算法原值并单独保存人工修订。
 - 定位案例：执行基线差异比较，按 `draft -> analyzing -> pending_review -> confirmed -> closed` 流转。
@@ -77,7 +77,7 @@ frontend/src/pages                 五个业务页与登录页
 | `POST` | `/api/v1/auth/login` | 登录 |
 | `GET/POST` | `/api/v1/routes` | 线路列表/新建 |
 | `GET/PATCH` | `/api/v1/routes/:id` | 线路详情/编辑 |
-| `POST` | `/api/v1/routes/:id/baseline` | 设置基线 |
+| `POST` | `/api/v1/routes/:id/baseline` | 设置基线（请求体含 `trace_id` 与 `version`；被未关闭案例阻塞返回 409 `BASELINE_CASES_OPEN` 并在 `details.blockers` 列出案例） |
 | `GET` | `/api/v1/traces` | 轨迹列表 |
 | `POST` | `/api/v1/traces/import` | 导入采样点 |
 | `GET` | `/api/v1/traces/:id` | 轨迹、处理点和事件 |

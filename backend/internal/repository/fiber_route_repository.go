@@ -8,6 +8,7 @@ import (
 	"fiber-otdr-fault-localization/backend/internal/dto"
 	"fiber-otdr-fault-localization/backend/internal/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type FiberRouteRepository struct{ db *gorm.DB }
@@ -72,13 +73,37 @@ func (r *FiberRouteRepository) Update(route *model.FiberRoute) error {
 	return nil
 }
 
-func (r *FiberRouteRepository) SetBaseline(routeID, traceID uint) error {
-	result := r.db.Model(&model.FiberRoute{}).Where("id = ?", routeID).Update("baseline_trace_id", traceID)
+// GetForUpdate loads a route and takes a row lock on databases that support
+// SELECT ... FOR UPDATE, serializing baseline replacement against case creation
+// that snapshots the route baseline. The SQLite self-contained builds rely on
+// the database write lock plus the versioned conditional update instead.
+func (r *FiberRouteRepository) GetForUpdate(id uint) (model.FiberRoute, error) {
+	var route model.FiberRoute
+	query := r.db
+	if r.db.Dialector.Name() == "postgres" {
+		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
+	if err := query.First(&route, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return route, ErrNotFound
+		}
+		return route, fmt.Errorf("get fiber route for update: %w", err)
+	}
+	return route, nil
+}
+
+// ReplaceBaseline swaps the baseline only when the row still carries the
+// expected version and baseline. RowsAffected == 0 means another transaction
+// changed the baseline first (concurrent change / repeated submission).
+func (r *FiberRouteRepository) ReplaceBaseline(routeID uint, expectedVersion, traceID uint) error {
+	result := r.db.Model(&model.FiberRoute{}).
+		Where("id = ? AND version = ?", routeID, expectedVersion).
+		Updates(map[string]any{"baseline_trace_id": traceID, "version": gorm.Expr("version + 1")})
 	if result.Error != nil {
-		return fmt.Errorf("set route baseline: %w", result.Error)
+		return fmt.Errorf("replace route baseline: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return ErrNotFound
+		return ErrConcurrentChange
 	}
 	return nil
 }

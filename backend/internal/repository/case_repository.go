@@ -50,6 +50,30 @@ func (r *CaseRepository) List(query dto.CaseQuery) ([]model.LocalizationCase, in
 	return items, total, nil
 }
 
+// OpenCasesReferencingTraces returns non-closed cases on the given route whose
+// snapshot baseline or current trace is one of traceIDs. Baseline replacement
+// must be refused whole while any of these still reference the current baseline.
+func (r *CaseRepository) OpenCasesReferencingTraces(routeID uint, traceIDs []uint) ([]model.LocalizationCase, error) {
+	if len(traceIDs) == 0 {
+		return nil, nil
+	}
+	var items []model.LocalizationCase
+	if err := r.db.Where("route_id = ? AND case_status <> ? AND (baseline_trace_id IN ? OR current_trace_id IN ?)", routeID, constants.CaseClosed, traceIDs, traceIDs).Order("id ASC").Find(&items).Error; err != nil {
+		return nil, fmt.Errorf("list open cases referencing traces: %w", err)
+	}
+	return items, nil
+}
+
+// OpenByRoute returns every non-closed case of a route, newest first, for the
+// pending-case panel of the route detail view.
+func (r *CaseRepository) OpenByRoute(routeID uint) ([]model.LocalizationCase, error) {
+	var items []model.LocalizationCase
+	if err := r.db.Where("route_id = ? AND case_status <> ?", routeID, constants.CaseClosed).Order("created_at DESC").Find(&items).Error; err != nil {
+		return nil, fmt.Errorf("list open cases by route: %w", err)
+	}
+	return items, nil
+}
+
 func (r *CaseRepository) Transition(id, version uint, from, to constants.CaseStatus, updates map[string]any) error {
 	updates["case_status"] = to
 	updates["version"] = gorm.Expr("version + 1")

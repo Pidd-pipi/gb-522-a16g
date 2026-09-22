@@ -20,13 +20,19 @@ const (
 	CodeUnauthorized   = "AUTH_REQUIRED"
 	CodeForbidden      = "FORBIDDEN"
 	CodeAlgorithmInput = "ALGORITHM_INPUT_INSUFFICIENT"
-	CodeInternal       = "INTERNAL_ERROR"
+	// CodeBaselineBlocked is returned when open localization cases still
+	// reference the current baseline of a route.
+	CodeBaselineBlocked = "BASELINE_CASES_OPEN"
+	CodeInternal        = "INTERNAL_ERROR"
 )
 
 type AppError struct {
 	Code    string
 	Status  int
 	Message string
+	// Details carries structured context such as the blocking cases for a
+	// refused baseline switch; omitted from the response payload when nil.
+	Details map[string]any
 	Err     error
 }
 
@@ -39,16 +45,19 @@ func (e *AppError) Error() string {
 func (e *AppError) Unwrap() error { return e.Err }
 
 func invalid(message string, err error) error {
-	return &AppError{CodeInvalidInput, http.StatusBadRequest, message, err}
+	return &AppError{CodeInvalidInput, http.StatusBadRequest, message, nil, err}
 }
 func notFound(resource string) error {
-	return &AppError{CodeNotFound, http.StatusNotFound, resource + " does not exist", repository.ErrNotFound}
+	return &AppError{CodeNotFound, http.StatusNotFound, resource + " does not exist", nil, repository.ErrNotFound}
 }
 func conflict(message string, err error) error {
-	return &AppError{CodeConflict, http.StatusConflict, message, err}
+	return &AppError{CodeConflict, http.StatusConflict, message, nil, err}
+}
+func baselineBlocked(message string, blockers []dto.BaselineBlocker) error {
+	return &AppError{Code: CodeBaselineBlocked, Status: http.StatusConflict, Message: message, Details: map[string]any{"blockers": blockers}}
 }
 func internal(message string, err error) error {
-	return &AppError{CodeInternal, http.StatusInternalServerError, message, err}
+	return &AppError{CodeInternal, http.StatusInternalServerError, message, nil, err}
 }
 
 type Actor struct {
@@ -77,12 +86,12 @@ func (s *AuthService) Login(request dto.LoginRequest) (dto.LoginResponse, error)
 	user, err := s.store.Users.FindByUsername(request.Username)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return dto.LoginResponse{}, &AppError{CodeUnauthorized, http.StatusUnauthorized, "username or password is incorrect", err}
+			return dto.LoginResponse{}, &AppError{Code: CodeUnauthorized, Status: http.StatusUnauthorized, Message: "username or password is incorrect", Err: err}
 		}
 		return dto.LoginResponse{}, internal("authentication lookup failed", err)
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(request.Password)); err != nil {
-		return dto.LoginResponse{}, &AppError{CodeUnauthorized, http.StatusUnauthorized, "username or password is incorrect", err}
+		return dto.LoginResponse{}, &AppError{Code: CodeUnauthorized, Status: http.StatusUnauthorized, Message: "username or password is incorrect", Err: err}
 	}
 	now, expires := time.Now(), time.Now().Add(s.ttl)
 	claims := Claims{UserID: user.ID, Username: user.Username, Role: user.Role, RegisteredClaims: jwt.RegisteredClaims{Subject: fmt.Sprint(user.ID), IssuedAt: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(expires), NotBefore: jwt.NewNumericDate(now)}}
@@ -101,15 +110,15 @@ func (s *AuthService) Parse(tokenString string) (Claims, error) {
 		return s.secret, nil
 	})
 	if err != nil || !token.Valid {
-		return Claims{}, &AppError{CodeUnauthorized, http.StatusUnauthorized, "access token is invalid or expired", err}
+		return Claims{}, &AppError{Code: CodeUnauthorized, Status: http.StatusUnauthorized, Message: "access token is invalid or expired", Err: err}
 	}
 	claims, ok := token.Claims.(*Claims)
 	if !ok {
-		return Claims{}, &AppError{CodeUnauthorized, http.StatusUnauthorized, "access token claims are invalid", nil}
+		return Claims{}, &AppError{Code: CodeUnauthorized, Status: http.StatusUnauthorized, Message: "access token claims are invalid"}
 	}
 	user, err := s.store.Users.FindByID(claims.UserID)
 	if err != nil {
-		return Claims{}, &AppError{CodeUnauthorized, http.StatusUnauthorized, "account is inactive", err}
+		return Claims{}, &AppError{Code: CodeUnauthorized, Status: http.StatusUnauthorized, Message: "account is inactive", Err: err}
 	}
 	// Authorization follows the current account record, not role/name claims
 	// captured when an older token was issued.

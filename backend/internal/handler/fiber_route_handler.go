@@ -46,12 +46,12 @@ func (h *FiberRouteHandler) Get(c *gin.Context) {
 	if !valid {
 		return
 	}
-	item, traces, err := h.service.Get(id)
+	route, traces, pendingCases, rejections, err := h.service.Get(id)
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	ok(c, http.StatusOK, gin.H{"route": item, "traces": traces}, nil)
+	ok(c, http.StatusOK, gin.H{"route": route, "traces": traces, "pending_cases": pendingCases, "baseline_rejections": rejections}, nil)
 }
 
 func (h *FiberRouteHandler) Update(c *gin.Context) {
@@ -80,7 +80,7 @@ func (h *FiberRouteHandler) SetBaseline(c *gin.Context) {
 	if !bind(c, h.validate, &request) {
 		return
 	}
-	item, err := h.service.SetBaseline(id, request.TraceID, actor(c))
+	item, err := h.service.SetBaseline(id, request.TraceID, request.Version, actor(c))
 	if err != nil {
 		fail(c, err)
 		return

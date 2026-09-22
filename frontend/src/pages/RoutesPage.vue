@@ -1,25 +1,45 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Cable, CheckCircle2, Plus, Search, Pencil } from 'lucide-vue-next'
+import { Cable, CheckCircle2, Plus, Search, Pencil, GitCompareArrows, Ban } from 'lucide-vue-next'
 import PageHeader from '@/components/common/PageHeader.vue'
 import TraceChart from '@/components/common/TraceChart.vue'
 import { useRouteStore } from '@/stores/routes'
 import { routeApi, traceApi } from '@/api/domain'
 import { useAuth } from '@/hooks/useAuth'
-import type { FiberRoute, TraceCapture, TraceEnvelope } from '@/types/domain'
+import type { BaselineRejection, FiberRoute, TraceCapture, TraceEnvelope } from '@/types/domain'
+import type { LocalizationCase } from '@/types/case'
+import { caseStatusLabel } from '@/types/case'
 
 const store = useRouteStore(); const auth = useAuth(); const keyword = ref(''); const createOpen = ref(false); const detailOpen = ref(false); const busy = ref(false)
 const selected = ref<FiberRoute | null>(null); const history = ref<TraceCapture[]>([]); const preview = ref<TraceEnvelope | null>(null); const editOpen = ref(false)
+const pendingCases = ref<LocalizationCase[]>([]); const rejections = ref<BaselineRejection[]>([]); const activeTab = ref('traces'); const baselineBusy = ref<number | null>(null)
 const form = reactive({ route_code: '', name: '', length_m: 12000, refractive_index: 1.468, launch_connector: 'SC/APC', route_status: 'active' })
 const editForm = reactive({ name: '', length_m: 0, refractive_index: 1.468, launch_connector: '', route_status: 'active' })
 async function search() { await store.fetch({ keyword: keyword.value, page_size: 50 }) }
 async function create() { busy.value = true; try { await store.create(form); createOpen.value = false; Object.assign(form, { route_code: '', name: '', length_m: 12000, refractive_index: 1.468, launch_connector: 'SC/APC', route_status: 'active' }); ElMessage.success('线路档案已建立') } finally { busy.value = false } }
-async function inspect(route: FiberRoute) { selected.value = route; preview.value = null; const { data } = await routeApi.detail(route.id); history.value = data.data.traces; detailOpen.value = true; if (history.value[0]) await showTrace(history.value[0].id) }
+async function inspect(route: FiberRoute) { selected.value = route; preview.value = null; activeTab.value = 'traces'; await reloadDetail(); detailOpen.value = true; if (history.value[0]) await showTrace(history.value[0].id) }
+async function reloadDetail() { if (!selected.value) return; const { data } = await routeApi.detail(selected.value.id); selected.value = data.data.route; history.value = data.data.traces; pendingCases.value = data.data.pending_cases; rejections.value = data.data.baseline_rejections }
 async function showTrace(id: number) { const { data } = await traceApi.detail(id); preview.value = data.data }
-async function setBaseline(traceId: number) { if (!selected.value) return; await store.setBaseline(selected.value.id, traceId); selected.value.baseline_trace_id = traceId; ElMessage.success('基线轨迹已更新') }
+async function setBaseline(traceId: number) {
+  if (!selected.value) return
+  baselineBusy.value = traceId
+  try {
+    const updated = await store.setBaseline(selected.value.id, traceId, selected.value.version)
+    selected.value = updated
+    await reloadDetail()
+    ElMessage.success('基线轨迹已更新')
+  } catch {
+    // Global interceptor already surfaced the error code; refresh so the
+    // rejection reason and blocking cases are read back immediately.
+    await reloadDetail()
+    activeTab.value = 'rejections'
+  } finally { baselineBusy.value = null }
+}
 function openEdit() { if (!selected.value) return; Object.assign(editForm, { name: selected.value.name, length_m: selected.value.length_m, refractive_index: selected.value.refractive_index, launch_connector: selected.value.launch_connector, route_status: selected.value.route_status }); editOpen.value = true }
 async function update() { if (!selected.value) return; busy.value = true; try { const updated = await store.update(selected.value.id, editForm); selected.value = updated; editOpen.value = false; ElMessage.success('线路档案已更新') } finally { busy.value = false } }
+const rejectionReasonText: Record<string, string> = { open_cases_referencing_baseline: '存在未关闭案例引用当前基线', baseline_changed_concurrently: '基线已被并发修改', trace_not_on_route: '轨迹不属于该线路' }
+function statusText(status: string) { return caseStatusLabel[status as LocalizationCase['case_status']] ?? status }
 onMounted(search)
 </script>
 
@@ -49,12 +69,45 @@ onMounted(search)
     <template #footer><el-button @click="createOpen=false">取消</el-button><el-button type="primary" :loading="busy" :disabled="!form.route_code || !form.name" @click="create">建立档案</el-button></template>
   </el-dialog>
 
-  <el-drawer v-model="detailOpen" :title="selected ? `${selected.route_code} / ${selected.name}` : '线路详情'" size="min(860px, 94vw)">
+  <el-drawer v-model="detailOpen" :title="selected ? `${selected.route_code} / ${selected.name}` : '线路详情'" size="min(880px, 94vw)">
     <template #header><div class="drawer-title"><span>{{ selected ? `${selected.route_code} / ${selected.name}` : '线路详情' }}</span><el-button v-if="selected && auth.canAnalyze()" size="small" @click="openEdit"><Pencil :size="14" />编辑档案</el-button></div></template>
-    <div v-if="selected" class="route-facts"><span><small>长度</small><strong>{{ selected.length_m.toLocaleString() }} m</strong></span><span><small>折射率</small><strong>{{ selected.refractive_index }}</strong></span><span><small>基线轨迹</small><strong>{{ selected.baseline_trace_id ? `#${selected.baseline_trace_id}` : '未设置' }}</strong></span></div>
-    <TraceChart v-if="preview && selected" :points="preview.trace.processed_points.length ? preview.trace.processed_points : preview.trace.points" :sample-interval-ns="preview.trace.sample_interval_ns" :refractive-index="selected.refractive_index" :events="preview.events" :noise-floor="preview.trace.noise_floor_db" :height="300" />
-    <h2 class="history-title">历史轨迹</h2>
-    <div class="history-list"><button v-for="trace in history" :key="trace.id" :class="{ active: preview?.trace.id === trace.id }" @click="showTrace(trace.id)"><span><strong>#{{ trace.id }} · {{ trace.wavelength_nm }} nm</strong><small>{{ new Date(trace.captured_at).toLocaleString() }}</small></span><span class="history-actions"><i v-if="selected?.baseline_trace_id === trace.id">当前基线</i><el-button v-else-if="auth.canReview()" size="small" @click.stop="setBaseline(trace.id)">设为基线</el-button></span></button><div v-if="!history.length" class="empty-state"><span>该线路还没有轨迹记录。</span></div></div>
+    <div v-if="selected" class="route-facts"><span><small>长度</small><strong>{{ selected.length_m.toLocaleString() }} m</strong></span><span><small>折射率</small><strong>{{ selected.refractive_index }}</strong></span><span><small>基线轨迹</small><strong>{{ selected.baseline_trace_id ? `#${selected.baseline_trace_id}` : '未设置' }}</strong></span><span><small>版本号</small><strong>v{{ selected.version }}</strong></span></div>
+    <el-tabs v-model="activeTab" class="detail-tabs">
+      <el-tab-pane name="traces">
+        <template #label><span class="tab-label">轨迹切换<small>{{ history.length }}</small></span></template>
+        <TraceChart v-if="preview && selected" :points="preview.trace.processed_points.length ? preview.trace.processed_points : preview.trace.points" :sample-interval-ns="preview.trace.sample_interval_ns" :refractive-index="selected.refractive_index" :events="preview.events" :noise-floor="preview.trace.noise_floor_db" :height="300" />
+        <h2 class="history-title">历史轨迹</h2>
+        <div class="history-list"><button v-for="trace in history" :key="trace.id" :class="{ active: preview?.trace.id === trace.id }" @click="showTrace(trace.id)"><span><strong>#{{ trace.id }} · {{ trace.wavelength_nm }} nm</strong><small>{{ new Date(trace.captured_at).toLocaleString() }}</small></span><span class="history-actions"><i v-if="selected?.baseline_trace_id === trace.id">当前基线</i><el-button v-else-if="auth.canReview()" size="small" type="primary" plain :loading="baselineBusy === trace.id" @click.stop="setBaseline(trace.id)">设为基线</el-button></span></button><div v-if="!history.length" class="empty-state"><span>该线路还没有轨迹记录。</span></div></div>
+      </el-tab-pane>
+      <el-tab-pane name="cases">
+        <template #label><span class="tab-label">待处理案例<small>{{ pendingCases.length }}</small></span></template>
+        <div class="case-panel">
+          <el-table :data="pendingCases" size="small" row-key="id">
+            <el-table-column label="案例" width="80"><template #default="scope"><strong>#{{ scope.row.id }}</strong></template></el-table-column>
+            <el-table-column label="对比轨迹" min-width="150"><template #default="scope"><span class="trace-pair">#{{ scope.row.baseline_trace_id }} <GitCompareArrows :size="13" /> #{{ scope.row.current_trace_id }}</span></template></el-table-column>
+            <el-table-column label="状态" width="100"><template #default="scope"><span class="status-pill">{{ statusText(scope.row.case_status) }}</span></template></el-table-column>
+            <el-table-column label="建立时间" min-width="160"><template #default="scope">{{ new Date(scope.row.created_at).toLocaleString() }}</template></el-table-column>
+            <template #empty><div class="empty-state compact"><span>没有未关闭案例，可以更换基线。</span></div></template>
+          </el-table>
+          <p class="panel-hint">未关闭案例仍引用当前基线时，基线更换将被整次拒绝；历史（已关闭）案例继续保留原基线，不受影响。</p>
+        </div>
+      </el-tab-pane>
+      <el-tab-pane name="rejections">
+        <template #label><span class="tab-label">拒绝原因<small>{{ rejections.length }}</small></span></template>
+        <div class="rejection-list">
+          <div v-for="item in rejections" :key="item.request_id + item.created_at" class="rejection-card">
+            <div class="rejection-head"><Ban :size="15" /><strong>{{ rejectionReasonText[item.reason] ?? item.reason }}</strong><span class="muted">{{ new Date(item.created_at).toLocaleString() }}</span></div>
+            <p>{{ item.message }}<template v-if="item.requested_trace_id">（目标轨迹 #{{ item.requested_trace_id }}）</template></p>
+            <div v-if="item.blockers?.length" class="blocker-list">
+              <small>阻塞案例（{{ item.blockers.length }}）：</small>
+              <span v-for="blocker in item.blockers" :key="blocker.case_id" class="blocker-chip">#{{ blocker.case_id }} · {{ statusText(blocker.case_status) }} · 基线 #{{ blocker.baseline_trace_id }}</span>
+            </div>
+            <small class="muted">操作人 {{ item.actor_name }} · 请求 {{ item.request_id }}</small>
+          </div>
+          <div v-if="!rejections.length" class="empty-state compact"><span>尚无被拒绝的基线更换记录。</span></div>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
   </el-drawer>
 
   <el-dialog v-model="editOpen" title="编辑线路档案" width="min(620px, calc(100vw - 28px))">
@@ -66,5 +119,11 @@ onMounted(search)
 <style scoped>
 .baseline { display:inline-flex; align-items:center; gap:5px; color:var(--accent); font-weight:700; }.muted { color:var(--text-muted); }.form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 16px; }.route-facts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin-bottom:16px; border:1px solid var(--line); }.route-facts span { padding:12px 14px; border-right:1px solid var(--line); }.route-facts span:last-child { border-right:0; }.route-facts small,.route-facts strong { display:block; }.route-facts small { color:var(--text-muted); font-size:11px; }.route-facts strong { margin-top:4px; font-size:15px; }.history-title { margin:24px 0 10px; font-size:15px; }.history-list { border-top:1px solid var(--line); }.history-list>button { width:100%; min-height:58px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 12px; border:0; border-bottom:1px solid var(--line); background:transparent; color:var(--text); text-align:left; cursor:pointer; }.history-list>button:hover,.history-list>button.active { background:var(--surface-strong); }.history-list strong,.history-list small { display:block; }.history-list small { margin-top:3px; color:var(--text-muted); }.history-actions { display:flex; align-items:center; gap:8px; }.history-actions i { color:var(--accent); font-size:11px; font-style:normal; font-weight:800; }
 .drawer-title { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; }
+.route-facts { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.detail-tabs { margin-top:4px; }.tab-label { display:inline-flex; align-items:center; gap:6px; }.tab-label small { font-size:11px; background:var(--surface-strong); border-radius:9px; padding:0 7px; color:var(--text-muted); }
+.trace-pair { display:inline-flex; align-items:center; gap:5px; font-variant-numeric:tabular-nums; }
+.panel-hint { margin-top:12px; font-size:12px; color:var(--text-muted); line-height:1.7; }
+.empty-state.compact { padding:22px; }
+.rejection-list { display:flex; flex-direction:column; gap:10px; }.rejection-card { border:1px solid var(--line); padding:12px 14px; background:var(--surface); }.rejection-card p { margin:8px 0; font-size:13px; line-height:1.6; }.rejection-head { display:flex; align-items:center; gap:7px; }.rejection-head .muted { margin-left:auto; font-size:11px; }.rejection-head svg { color:#d97706; }.blocker-list { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:6px 0 8px; }.blocker-list small { color:var(--text-muted); width:100%; }.blocker-chip { font-size:11px; border:1px solid var(--line); padding:2px 8px; border-radius:10px; background:var(--surface-strong); font-variant-numeric:tabular-nums; }
 @media(max-width:600px){.form-grid,.route-facts{grid-template-columns:1fr}.route-facts span{border-right:0;border-bottom:1px solid var(--line)}.route-facts span:last-child{border-bottom:0}}
 </style>

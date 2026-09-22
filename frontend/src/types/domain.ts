@@ -1,6 +1,9 @@
 import type { EventMarker } from './event'
 
-export interface FiberRoute { id: number; route_code: string; name: string; length_m: number; refractive_index: number; launch_connector: string; route_status: 'active' | 'maintenance' | 'retired'; baseline_trace_id?: number; created_at: string; updated_at: string }
+export interface FiberRoute { id: number; route_code: string; name: string; length_m: number; refractive_index: number; launch_connector: string; route_status: 'active' | 'maintenance' | 'retired'; baseline_trace_id?: number; version: number; created_at: string; updated_at: string }
+export interface BaselineBlocker { case_id: number; case_status: string; baseline_trace_id: number; current_trace_id: number; created_at: string }
+export interface BaselineRejection { request_id: string; actor_name: string; reason: string; message: string; requested_trace_id?: number; blockers?: BaselineBlocker[]; created_at: string }
+export interface RouteDetail { route: FiberRoute; traces: TraceCapture[]; pending_cases: import('./case').LocalizationCase[]; baseline_rejections: BaselineRejection[] }
 export interface TraceCapture { id: number; route_id: number; wavelength_nm: number; pulse_width_ns: number; sample_interval_ns: number; raw_points_json: number[]; processed_points_json: number[]; noise_floor_db: number; denoise_window: number; peak_threshold_db: number; merge_window: number; captured_at: string; uploaded_by: number; created_at: string }
 export interface TraceDetail { id: number; route_id: number; wavelength_nm: number; pulse_width_ns: number; sample_interval_ns: number; points: number[]; processed_points: number[]; noise_floor_db: number; denoise_window: number; peak_threshold_db: number; merge_window: number; captured_at: string; uploaded_by: number }
 export interface TraceEnvelope { trace: TraceDetail; events: EventMarker[] }

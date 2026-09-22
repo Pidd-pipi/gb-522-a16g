@@ -17,6 +17,10 @@ import (
 
 var ErrNotFound = errors.New("record not found")
 
+// ErrConcurrentChange means a version-guarded conditional update matched no
+// row because another transaction committed first.
+var ErrConcurrentChange = errors.New("record changed concurrently")
+
 type Store struct {
 	DB     *gorm.DB
 	Users  *UserRepository

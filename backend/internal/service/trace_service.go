@@ -56,7 +56,7 @@ func (s *TraceService) Import(request dto.ImportTraceRequest, actor Actor) (mode
 	}
 	noise, err := algorithm.EstimateNoiseFloor(filtered)
 	if err != nil {
-		return model.TraceCapture{}, &AppError{CodeAlgorithmInput, 422, "not enough trace samples for noise estimation", err}
+		return model.TraceCapture{}, &AppError{Code: CodeAlgorithmInput, Status: 422, Message: "not enough trace samples for noise estimation", Err: err}
 	}
 	lastDistance, err := algorithm.SampleDistance(len(request.Points)-1, request.SampleIntervalNS, route.RefractiveIndex)
 	if err != nil {

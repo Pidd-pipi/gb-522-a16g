@@ -21,6 +21,20 @@ func (r *AuditRepository) Create(entry *model.AuditLog) error {
 	return nil
 }
 
+// ListRejectedBaselineChanges returns the recorded baseline-switch refusals for
+// a route, newest first, so the route detail view can read rejection reasons
+// back after a refresh.
+func (r *AuditRepository) ListRejectedBaselineChanges(routeID uint, limit int) ([]model.AuditLog, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	var entries []model.AuditLog
+	if err := r.db.Where("action = ? AND route_id = ?", "route.baseline_change_rejected", routeID).Order("created_at DESC").Limit(limit).Find(&entries).Error; err != nil {
+		return nil, fmt.Errorf("list rejected baseline changes: %w", err)
+	}
+	return entries, nil
+}
+
 func (r *AuditRepository) List(query dto.AuditQuery) ([]model.AuditLog, int64, error) {
 	db := r.db.Model(&model.AuditLog{})
 	if query.RouteID != nil {

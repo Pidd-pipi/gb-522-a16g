@@ -55,15 +55,15 @@ func (s *EventService) Detect(traceID uint, request dto.DetectEventsRequest, act
 	}
 	filtered, err := algorithm.MovingMedian(raw, window)
 	if err != nil {
-		return dto.DetectionSummary{}, &AppError{CodeAlgorithmInput, 422, "trace denoising failed", err}
+		return dto.DetectionSummary{}, &AppError{Code: CodeAlgorithmInput, Status: 422, Message: "trace denoising failed", Err: err}
 	}
 	noise, err := algorithm.EstimateNoiseFloor(filtered)
 	if err != nil {
-		return dto.DetectionSummary{}, &AppError{CodeAlgorithmInput, 422, "noise floor estimation failed", err}
+		return dto.DetectionSummary{}, &AppError{Code: CodeAlgorithmInput, Status: 422, Message: "noise floor estimation failed", Err: err}
 	}
 	detected, rejected, err := algorithm.Detect(filtered, threshold, merge, trace.SampleIntervalNS, route.RefractiveIndex, route.LengthM)
 	if err != nil {
-		return dto.DetectionSummary{}, &AppError{CodeAlgorithmInput, 422, "event detection failed", err}
+		return dto.DetectionSummary{}, &AppError{Code: CodeAlgorithmInput, Status: 422, Message: "event detection failed", Err: err}
 	}
 	events := make([]model.EventMarker, 0, len(detected))
 	for _, item := range detected {

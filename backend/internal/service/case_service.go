@@ -149,7 +149,7 @@ func (s *CaseService) Analyze(id uint, request dto.AnalyzeCaseRequest, actor Act
 			}
 			return tx.Audits.Create(audit(actor, "case.analysis_failed", "LocalizationCase", item.ID, &item.RouteID, "{}", snapshot(map[string]any{"error": analysisErr.Error()})))
 		})
-		return item, &AppError{CodeAlgorithmInput, http.StatusUnprocessableEntity, "case analysis could not be completed", analysisErr}
+		return item, &AppError{Code: CodeAlgorithmInput, Status: http.StatusUnprocessableEntity, Message: "case analysis could not be completed", Err: analysisErr}
 	}
 	encoded, _ := json.Marshal(differences)
 	params, _ := json.Marshal(dto.CaseParameters{DistanceToleranceM: tolerance, LossIncreaseDB: loss})
@@ -195,7 +195,7 @@ func (s *CaseService) compareEvents(item model.LocalizationCase, tolerance, loss
 
 func (s *CaseService) Confirm(id uint, request dto.ConfirmCaseRequest, actor Actor) (model.LocalizationCase, error) {
 	if actor.Role != constants.RoleReviewer && actor.Role != constants.RoleAdmin {
-		return model.LocalizationCase{}, &AppError{CodeForbidden, http.StatusForbidden, "reviewer role is required to confirm a case", nil}
+		return model.LocalizationCase{}, &AppError{Code: CodeForbidden, Status: http.StatusForbidden, Message: "reviewer role is required to confirm a case"}
 	}
 	item, err := s.store.Cases.Get(id)
 	if errors.Is(err, repository.ErrNotFound) {
