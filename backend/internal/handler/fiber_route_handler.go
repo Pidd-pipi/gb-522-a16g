@@ -46,12 +46,12 @@ func (h *FiberRouteHandler) Get(c *gin.Context) {
 	if !valid {
 		return
 	}
-	item, traces, err := h.service.Get(id)
+	route, traces, pending, rejections, err := h.service.Get(id)
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	ok(c, http.StatusOK, gin.H{"route": item, "traces": traces}, nil)
+	ok(c, http.StatusOK, gin.H{"route": route, "traces": traces, "pending_cases": pending, "rejections": rejections}, nil)
 }
 
 func (h *FiberRouteHandler) Update(c *gin.Context) {

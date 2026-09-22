@@ -50,6 +50,29 @@ func (r *CaseRepository) List(query dto.CaseQuery) ([]model.LocalizationCase, in
 	return items, total, nil
 }
 
+// OpenByRoute returns all non-closed cases of a route, newest first. It feeds
+// the pending-cases panel of the route detail view.
+func (r *CaseRepository) OpenByRoute(routeID uint) ([]model.LocalizationCase, error) {
+	var items []model.LocalizationCase
+	if err := r.db.Where("route_id = ? AND case_status <> ?", routeID, constants.CaseClosed).
+		Order("created_at DESC").Find(&items).Error; err != nil {
+		return nil, fmt.Errorf("list open cases by route: %w", err)
+	}
+	return items, nil
+}
+
+// OpenCasesByBaseline returns cases that are still in flight (not closed) and
+// reference the given trace as their baseline. Such cases keep the review
+// baseline of a route from being replaced.
+func (r *CaseRepository) OpenCasesByBaseline(routeID, baselineTraceID uint) ([]model.LocalizationCase, error) {
+	var items []model.LocalizationCase
+	if err := r.db.Where("route_id = ? AND baseline_trace_id = ? AND case_status <> ?", routeID, baselineTraceID, constants.CaseClosed).
+		Order("id ASC").Find(&items).Error; err != nil {
+		return nil, fmt.Errorf("list open cases by baseline: %w", err)
+	}
+	return items, nil
+}
+
 func (r *CaseRepository) Transition(id, version uint, from, to constants.CaseStatus, updates map[string]any) error {
 	updates["case_status"] = to
 	updates["version"] = gorm.Expr("version + 1")

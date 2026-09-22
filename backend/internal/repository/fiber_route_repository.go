@@ -72,13 +72,37 @@ func (r *FiberRouteRepository) Update(route *model.FiberRoute) error {
 	return nil
 }
 
-func (r *FiberRouteRepository) SetBaseline(routeID, traceID uint) error {
-	result := r.db.Model(&model.FiberRoute{}).Where("id = ?", routeID).Update("baseline_trace_id", traceID)
+// ReplaceBaseline performs a guarded update: it only rewrites the baseline
+// when the stored baseline still matches the value the checks ran against
+// (NULL is represented by expected == 0). RowsAffected == 0 means another
+// transaction changed the baseline concurrently; the caller must reject the
+// request without rewriting the route.
+func (r *FiberRouteRepository) ReplaceBaseline(routeID uint, expected, target uint) (bool, error) {
+	result := r.db.Model(&model.FiberRoute{}).
+		Where("id = ? AND (baseline_trace_id = ? OR (baseline_trace_id IS NULL AND ? = 0))", routeID, expected, expected).
+		Update("baseline_trace_id", target)
 	if result.Error != nil {
-		return fmt.Errorf("set route baseline: %w", result.Error)
+		return false, fmt.Errorf("replace route baseline: %w", result.Error)
 	}
-	if result.RowsAffected == 0 {
-		return ErrNotFound
+	return result.RowsAffected > 0, nil
+}
+
+// BaselineAttemptRepository stores the outcome of every baseline replacement
+// request so rejection reasons remain readable after a refresh.
+type BaselineAttemptRepository struct{ db *gorm.DB }
+
+func (r *BaselineAttemptRepository) Create(attempt *model.BaselineChangeAttempt) error {
+	if err := r.db.Create(attempt).Error; err != nil {
+		return fmt.Errorf("create baseline change attempt: %w", err)
 	}
 	return nil
+}
+
+// ListByRoute returns the most recent attempts, newest first.
+func (r *BaselineAttemptRepository) ListByRoute(routeID uint, limit int) ([]model.BaselineChangeAttempt, error) {
+	var attempts []model.BaselineChangeAttempt
+	if err := r.db.Where("route_id = ?", routeID).Order("created_at DESC").Limit(limit).Find(&attempts).Error; err != nil {
+		return nil, fmt.Errorf("list baseline change attempts: %w", err)
+	}
+	return attempts, nil
 }

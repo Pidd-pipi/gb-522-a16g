@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { ApiEnvelope, AuditLog, FiberRoute, TraceCapture, TraceEnvelope, User } from '@/types/domain'
+import type { ApiEnvelope, AuditLog, FiberRoute, RouteDetail, TraceCapture, TraceEnvelope, User } from '@/types/domain'
 import type { EventMarker, EventType } from '@/types/event'
 import type { LocalizationCase } from '@/types/case'
 
@@ -8,7 +8,7 @@ export const routeApi = {
   list: (params?: object) => api.get<ApiEnvelope<FiberRoute[]>>('/routes', { params }),
   create: (body: object) => api.post<ApiEnvelope<FiberRoute>>('/routes', body),
   update: (id: number, body: object) => api.patch<ApiEnvelope<FiberRoute>>(`/routes/${id}`, body),
-  detail: (id: number) => api.get<ApiEnvelope<{ route: FiberRoute; traces: TraceCapture[] }>>(`/routes/${id}`),
+  detail: (id: number) => api.get<ApiEnvelope<RouteDetail>>(`/routes/${id}`),
   setBaseline: (id: number, traceId: number) => api.post<ApiEnvelope<FiberRoute>>(`/routes/${id}/baseline`, { trace_id: traceId }),
 }
 export const traceApi = {

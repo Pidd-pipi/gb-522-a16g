@@ -21,6 +21,36 @@ type SetBaselineRequest struct {
 	TraceID uint `json:"trace_id" validate:"required,gt=0"`
 }
 
+// BlockingCaseView summarizes an open case that blocks a baseline replacement.
+type BlockingCaseView struct {
+	ID             uint   `json:"id"`
+	CaseStatus     string `json:"case_status"`
+	CurrentTraceID uint   `json:"current_trace_id"`
+	CreatedAt      string `json:"created_at"`
+}
+
+// PendingCaseView summarizes an open case on a route for the detail panel.
+type PendingCaseView struct {
+	ID              uint   `json:"id"`
+	BaselineTraceID uint   `json:"baseline_trace_id"`
+	CurrentTraceID  uint   `json:"current_trace_id"`
+	CaseStatus      string `json:"case_status"`
+	Conclusion      string `json:"conclusion"`
+	CreatedAt       string `json:"created_at"`
+}
+
+// BaselineRejectionView is the persisted outcome of a baseline change attempt.
+type BaselineRejectionView struct {
+	ID               uint   `json:"id"`
+	RequestedTraceID uint   `json:"requested_trace_id"`
+	CurrentTraceID   *uint  `json:"current_trace_id"`
+	Result           string `json:"result"`
+	Reason           string `json:"reason"`
+	ActorName        string `json:"actor_name"`
+	BlockingCaseIDs  []uint `json:"blocking_case_ids"`
+	CreatedAt        string `json:"created_at"`
+}
+
 type RouteQuery struct {
 	Keyword  string
 	Status   string

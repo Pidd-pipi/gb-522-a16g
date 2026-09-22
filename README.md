@@ -29,6 +29,9 @@ docker compose down -v --remove-orphans
 ## 功能
 
 - 线路档案：校验线路长度和折射率，查看历史轨迹，由 reviewer/admin 设置基线。
+  - 更换复核基线时若仍有未关闭案例（`draft/analyzing/pending_review/confirmed`）引用当前基线，整次请求以 `409 BASELINE_REPLACEMENT_BLOCKED` 拒绝并在错误体 `blocking_cases` 中列出阻塞案例；历史（已关闭）案例继续保留各自创建时的原基线，不随基线更换改写。
+  - 目标轨迹不属于该线路（`trace_not_on_route`）、与当前基线相同（`same_baseline`，重复操作只成功一次）、或请求进入事务时基线已被并发改写（`baseline_concurrent_change`）均拒绝且不改写线路。
+  - 检查、守卫式更新、审计 `route.baseline_changed` 与拒绝记录落在同一个数据库事务；拒绝原因持久化，线路详情抽屉提供“可切换轨迹 / 待处理案例 / 基线拒绝原因”三个视图，刷新后仍可回读。
 - 轨迹分析：导入离线采样，记录去噪窗口、检测阈值和合并窗口，缩放真实 API 曲线。
 - 事件复核：按线路、类型和复核状态筛选，保留算法原值并单独保存人工修订。
 - 定位案例：执行基线差异比较，按 `draft -> analyzing -> pending_review -> confirmed -> closed` 流转。
