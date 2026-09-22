@@ -1,0 +1,11 @@
+{
+  "raw": [18.0, 17.9, 18.1, 18.0, 17.8, 14.0, 13.9, 13.8, 13.7, 13.6, 13.5, 13.4, 13.3, 13.2, 13.1, 13.0, 12.9, 12.8, 12.7, 12.6],
+  "window": 3,
+  "threshold": 1.0,
+  "merge_window": 2,
+  "sample_interval_ns": 100.0,
+  "refractive_index": 1.468,
+  "route_length_m": 1000.0,
+  "expected_event_count": 1,
+  "expected_first_distance_m": 51.05
+}

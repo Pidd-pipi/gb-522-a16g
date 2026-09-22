@@ -1,0 +1,27 @@
+{
+  "name": "fiber-otdr-fault-localization-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "axios": "^1.7.7",
+    "echarts": "^6.1.0",
+    "element-plus": "^2.8.4",
+    "lucide-vue-next": "^0.468.0",
+    "pinia": "^2.2.4",
+    "vue": "^3.5.10",
+    "vue-router": "^4.4.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.5",
+    "typescript": "~5.6.2",
+    "vite": "^8.2.2",
+    "vue-tsc": "^2.1.6"
+  }
+}

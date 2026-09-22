@@ -1,0 +1,69 @@
+name: fiber-otdr-fault-localization
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-fiber-otdr-fault-localization}-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fiber_otdr}
+      POSTGRES_USER: ${POSTGRES_USER:-otdr_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-otdr_local_password}
+    ports:
+      - "${DB_PORT:-57522}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-otdr_app} -d ${POSTGRES_DB:-fiber_otdr}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-fiber-otdr-fault-localization}-backend
+    environment:
+      PORT: "8080"
+      DB_DRIVER: postgres
+      DB_DSN: host=postgres user=${POSTGRES_USER:-otdr_app} password=${POSTGRES_PASSWORD:-otdr_local_password} dbname=${POSTGRES_DB:-fiber_otdr} port=5432 sslmode=disable TimeZone=Asia/Shanghai
+      DB_AUTO_MIGRATE: "true"
+      JWT_SECRET: ${JWT_SECRET:-fiber-otdr-compose-secret-at-least-32-bytes}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:18522,http://127.0.0.1:18522}
+      MAX_TRACE_POINTS: ${MAX_TRACE_POINTS:-20000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${BACKEND_PORT:-19522}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME:-fiber-otdr-fault-localization}-frontend
+    ports:
+      - "${FRONTEND_PORT:-18522}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    name: ${COMPOSE_PROJECT_NAME:-fiber-otdr-fault-localization}-postgres-data
